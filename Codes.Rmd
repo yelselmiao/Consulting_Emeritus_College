@@ -1,0 +1,1454 @@
+---
+title: "Emeritus College"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r Packages}
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(scales)
+library(todyverse)
+library(reshape2)
+library(tidyr)
+```
+
+```{r Load the Data}
+raw_data <- read_excel("Data/2021 UBC Emeritus College Member Survey_June 25, 2021_12.38.xlsx")
+all_member_data <- read_excel("Data/Mailing list UBC Emeritus College Survey 2021.xlsx")
+```
+
+```{r Data Wriangling for survery data,warning = FALSE, message=FALSE}
+data_1 <- raw_data %>% 
+          #select(Q15, Q6_1, Q6_2) %>% 
+          slice(-1) %>% 
+          rename(gender = Q15, YOB = Q6_1, YOR = Q6_2, department_school = Q6_3, faculty = Q6_4) %>%
+          mutate(age = 2021 - as.numeric(YOB),
+                 gender = as.factor(gender),
+                 YOR = as.numeric(YOR),
+                 department_school = as.factor(department_school),
+                 faculty = as.factor(faculty))
+
+data_1 = data_1 %>% mutate(age_group = case_when(YOB >= 1962 ~ '<=59',
+                                        YOB <= 1961 & YOB >= 1952 ~ '60-69',
+                                        YOB <= 1951 & YOB >= 1942 ~ '70-79',
+                                        YOB <= 1941 & YOB >= 1932 ~ '80-89',
+                                        YOB <= 1931 ~ '>=90',
+                                        TRUE ~ "Unknown"),
+                  retire_group = case_when(YOR >= 2018 ~ '2018-2021',
+                                           YOR <= 2017 & YOR >= 2013 ~ '2013-2017',
+                                           YOR <= 2012 & YOR >= 2008 ~ '2008-2012',
+                                           YOR <= 2007 & YOR >= 2003 ~ '2003-2007',
+                                           YOR <= 2002 ~ '<2002',
+                                           TRUE ~ 'Unknown'),
+                  age_group = as.factor(age_group),
+                  retire_group = as.factor(retire_group))                 
+```
+
+
+```{r Data Wrangling for all-member data}
+# DOR represents 'Date of Retirement' , and MOR represents 'Month of Retirement'
+all_member_data = all_member_data %>% 
+  rename(YOB = 'Year of Birth', MOR = 'Emeriti-Month') %>% 
+  mutate(gender = as.factor(Gender),
+         YOR = as.numeric(substr(MOR, start = 1, stop = 4)),
+         retire_group = case_when(YOR >= 2018 ~ '2018-2021',
+                                           YOR <= 2017 & YOR >= 2013 ~ '2013-2017',
+                                           YOR <= 2012 & YOR >= 2008 ~ '2008-2012',
+                                           YOR <= 2007 & YOR >= 2003 ~ '2003-2007',
+                                           YOR <= 2002 ~ '<2002',
+                                           TRUE ~ 'Unknown'),
+         age_group = case_when(YOB >= 1962 ~ '<=59',
+                                        YOB <= 1961 & YOB >= 1952 ~ '60-69',
+                                        YOB <= 1951 & YOB >= 1942 ~ '70-79',
+                                        YOB <= 1941 & YOB >= 1932 ~ '80-89',
+                                        YOB <= 1931 ~ '>=90',
+                                        TRUE ~ "Unknown"))
+all_member_data  
+```
+
+
+## Representative or not
+
+ Background: a survey of our 1200+ members to garner qualitative feedback on our College programs and activities. 
+
+A-1: gender
+Q6_1: YOB
+Q6_2: YOR
+Q6_3: Department/School
+Q6_4: Faculty
+
+I don't have the original data of 1200+ members who were sent the survey. So I will just display the proportion of these demographic information here.  
+
+### Gender 
+
+```{r Survey Gender Table}
+survey_gender_table = data_1 %>%
+  select(gender) %>%
+  group_by(gender) %>%
+  tally() %>%
+  slice_head(n= 3) %>%
+  add_row(gender = "Unkown", n = 90) %>% 
+  mutate(Percentage = percent(n/nrow(data_1)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")") )
+
+survey_gender_table = survey_gender_table %>%
+                        mutate(data_source = 'Survey Respondents')
+
+survey_gender_table
+```
+
+```{r All Member Gender Table}
+member_gender_table = all_member_data %>%
+  select(gender) %>% 
+  mutate_all(funs(str_replace(., "woman", "Woman"))) %>% 
+  group_by(gender) %>%
+  tally()  %>% 
+  slice_tail(n= 1)  %>% 
+  add_row(gender = "Man", n = 890) %>% 
+  mutate(Percentage = percent(n/nrow(all_member_data)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")")) 
+
+ member_gender_table = member_gender_table %>%
+   mutate_all(funs(str_replace(., "Woman", "Female"))) %>% 
+   mutate_all(funs(str_replace(., "Man", "Male"))) %>% 
+   mutate(data_source = 'All Members')
+ 
+ member_gender_table
+   
+```
+
+```{r Gender Visualization}
+gender_table = rbind(member_gender_table, survey_gender_table)
+
+
+gender_table %>% 
+  ggplot(aes(fill=data_source, y=n, x=gender,group = data_source)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  labs(x = "Gender", y = 'Count') + 
+  scale_fill_discrete(name = "Data Source") + 
+  geom_text(
+    aes(label = Label, group = data_source),
+    position = position_dodge(width = 1),
+    vjust = -0.5, size = 3, hjust = 0.45
+  ) 
+  
+```
+```{r Gender Visualization (excluding unknown) }
+survey_gender_table_known = data_1 %>%
+  select(gender) %>%
+  group_by(gender) %>%
+  tally() %>%
+  slice_head(n= 3) %>%
+  #add_row(gender = "Unkown", n = 90) %>% 
+  mutate(Percentage = percent(n/sum(n)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")") )
+
+survey_gender_table_known = survey_gender_table_known %>%
+                        mutate(data_source = 'Survey Respondents')
+
+survey_gender_table_known
+
+gender_table_known = rbind(member_gender_table, survey_gender_table_known)
+
+
+gender_table_known %>% 
+  ggplot(aes(fill=data_source, y=n, x=gender,group = data_source)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  labs(x = "Gender", y = 'Count') + 
+  scale_fill_discrete(name = "Data Source") + 
+  geom_text(
+    aes(label = Label, group = data_source),
+    position = position_dodge(width = 1),
+    vjust = -0.5, size = 3, hjust = 0.45
+  ) 
+```
+
+
+### Year of Birth (Age) 
+```{r Survey Age table}
+survey_age_table = data_1 %>%
+  select(age_group) %>%
+  group_by(age_group) %>%
+  tally() %>%
+  mutate(Percentage = percent(n/nrow(data_1)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")"),
+         data_source = 'Survey Repsondents')
+
+survey_age_table  
+```
+
+```{r All Member Age Table}
+# remove people whose ages are unkown because there are 729 missing data 
+member_age_table =  all_member_data %>%
+  select(age_group) %>%
+  group_by(age_group) %>%
+  tally() %>% 
+  slice_head(n=5) %>% 
+  mutate(Percentage = percent(n/sum(n)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")"),
+         data_source = 'All Members except Unknown')
+
+member_age_table
+```
+
+```{r Age Visualization (excluding unknown),fig.height=2,fig.width=5 }
+survey_age_table_known = data_1 %>%
+  select(age_group) %>%
+  group_by(age_group) %>%
+  tally() %>%
+  slice_head(n= 5) %>%
+  #add_row(gender = "Unkown", n = 90) %>% 
+  mutate(Percentage = percent(n/sum(n)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")") )
+
+survey_age_table_known = survey_age_table_known %>%
+                        mutate(data_source = 'Survey Respondents')
+
+survey_age_table_known
+
+survey_age_table_known = rbind(member_age_table, survey_age_table_known)
+
+survey_age_table_known$age_group <- factor(survey_age_table_known$age_group, levels = c('<=59','60-69','70-79', '80-89','>=90'))
+
+
+survey_age_table_known %>% 
+  ggplot(aes(fill=data_source, y=n, x=age_group,group = data_source)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  labs(x = "Age", y = 'Count') + 
+  scale_fill_discrete(name = "Data Source") + 
+  geom_text(
+    aes(label = Label, group = data_source),
+    position = position_dodge(width = 1),
+    vjust = -0.5, size = 3, hjust = 0.45
+  ) 
+```
+
+
+
+
+```{r visualization,fig.height=2,fig.width=5}
+age_table = rbind(survey_age_table, member_age_table)
+age_table$age_group <- factor(age_table$age_group, levels = c('<=59','60-69','70-79', '80-89','>=90','Unknown'))
+
+age_table %>% 
+  ggplot(aes(fill=data_source, y=n, x=age_group,group = data_source)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  labs(x = "Age Groups", y = 'Count') + 
+  scale_fill_discrete(name = "Data Source") + 
+  geom_text(
+    aes(label = Label, group = data_source),
+    position = position_dodge(width = 1),
+    vjust = -0.5, size = 3, hjust = 0.45
+  ) 
+  
+```
+
+
+
+### Year of Retirement
+```{r Survey Retirement table}
+survey_ysr_table = data_1 %>%
+  select(retire_group) %>%
+  group_by(retire_group) %>%
+  tally() %>%
+  #slice_head(n= 5) %>%
+  mutate(Percentage = percent(n/nrow(data_1)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")"),
+         data_source = "Survey Respondents")
+
+survey_ysr_table
+```
+```{r All Member retirement table}
+member_ysr_table = all_member_data %>%
+  select(retire_group) %>%
+  group_by(retire_group) %>%
+  tally() %>%
+  #slice_head(n=5) %>%
+  mutate(Percentage = percent(n/nrow(all_member_data)),
+         Label = paste0(as.character(n), " (", as.character(Percentage), ")"),
+         data_source = "All Members")
+
+member_ysr_table
+```
+
+
+
+
+```{r Visualization,fig.height = 2, fig.width=5.5}
+retire_table = rbind(survey_ysr_table, member_ysr_table)
+
+
+retire_table %>% 
+  ggplot(aes(fill=data_source, y=n, x=retire_group,group = data_source)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  labs(x = "Retirement Groups", y = 'Count') + 
+  scale_fill_discrete(name = "Data Source") + 
+  geom_text(
+    aes(label = Label, group = data_source),
+    position = position_dodge(width = 1),
+    vjust = -0.5, size = 3, hjust = 0.45
+  ) 
+  
+```
+
+## Patterns of Respsonse 
+
+### Survey question 8: respondents who selected “Valuable” to any of the 3 program choices
+
+Q8_1: Please rate the overall value to you of the following Programs that are offered. - General Meetings with speakers
+Q8_2: Please rate the overall value to you of the following Programs that are offered. - Senior Scholar Series
+Q8_3: Please rate the overall value to you of the following Programs that are offered. - Panel moderated Conversations
+
+
+
+
+```{r data}
+data_2 = data_1 %>% 
+  mutate(Q8_1 = as.factor(Q8_1),
+         Q8_2 = as.factor(Q8_2),
+         Q8_3 = as.factor(Q8_3),
+         Q8_1 = addNA(Q8_1),
+         Q8_2 = addNA(Q8_2),
+         Q8_3 = addNA(Q8_3)) %>% 
+  select(age_group,retire_group,gender, Q8_1,Q8_2,Q8_3) 
+```
+
+
+```{r Q8-gender}
+data_2 %>% 
+  mutate(Q8_val = ifelse(Q8_1 == "Valuable" |
+                         Q8_2 == "Valuable"|
+                           Q8_3 == "Valuable", TRUE, FALSE)) %>%
+  group_by(gender, Q8_val) %>% 
+  tally() %>%
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_val_prop = n[Q8_val == TRUE]/sum(n),
+            Q8_val_count = sum(n[Q8_val == TRUE])) %>% 
+  mutate(prop = percent(Q8_val_prop))
+```
+
+
+```{r Q8-age}
+data_2 %>% 
+  mutate(Q8_val = ifelse(Q8_1 == "Valuable" |
+                         Q8_2 == "Valuable"|
+                           Q8_3 == "Valuable", TRUE, FALSE)) %>%
+  group_by(age_group, Q8_val) %>% 
+  tally() %>%
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_val_prop = n[Q8_val == TRUE]/sum(n),
+            Q8_val_count = sum(n[Q8_val == TRUE])) %>% 
+  mutate(prop = percent(Q8_val_prop))
+```
+
+
+```{r Q8-retire}
+data_2 %>% 
+  mutate(Q8_val = ifelse(Q8_1 == "Valuable" |
+                         Q8_2 == "Valuable"|
+                           Q8_3 == "Valuable", TRUE, FALSE)) %>%
+  group_by(retire_group, Q8_val) %>% 
+  tally() %>%
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_val_prop = n[Q8_val == TRUE]/sum(n),
+            Q8_val_count = sum(n[Q8_val == TRUE])) %>% 
+  mutate(prop = percent(Q8_val_prop))
+```
+
+
+```{r Prop: Q8_1}
+
+data_2 %>% 
+  select(gender,Q8_1) %>% 
+  group_by(gender,Q8_1) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_1_val = n[Q8_1 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_1_val))
+
+
+# Age
+data_2 %>% 
+  select(age_group,Q8_1) %>% 
+  group_by(age_group,Q8_1) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_1_val = n[Q8_1 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_1_val))
+
+
+# Year of Retirement
+data_2 %>% 
+  select(retire_group,Q8_1) %>% 
+  group_by(retire_group,Q8_1) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_1_val = n[Q8_1 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_1_val))
+```
+
+```{r Prop: Q8_2}
+# Gender
+data_2 %>% 
+  select(gender,Q8_2) %>% 
+  group_by(gender,Q8_2) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_2_val = n[Q8_2 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_2_val))
+
+
+# Age
+data_2 %>% 
+  select(age_group,Q8_2) %>% 
+  group_by(age_group,Q8_2) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_2_val = n[Q8_2 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_2_val))
+
+
+
+# Year of Retirement
+data_2 %>% 
+  select(retire_group,Q8_2) %>% 
+  group_by(retire_group,Q8_2) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_2_val = n[Q8_2 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_2_val))
+
+```
+```{r Prop: Q8_3}
+# Gender 
+data_2 %>% 
+  select(gender,Q8_3) %>% 
+  group_by(gender,Q8_3) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_3_val = n[Q8_3 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_3_val))
+
+
+# Age
+data_2 %>% 
+  select(age_group,Q8_3) %>% 
+  group_by(age_group,Q8_3) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_3_val = n[Q8_3 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_3_val))
+
+
+# Year of Retirement
+data_2 %>% 
+  select(retire_group,Q8_3) %>% 
+  group_by(retire_group,Q8_3) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_3_val = n[Q8_3 == 'Valuable']/sum(n)) %>% 
+  mutate(prop = percent(Q8_3_val))
+```
+
+### Q22: When COVID no longer restricts our ability to socialize and meet in-person, the College will have to decide how to deliver its programs and activities.  What would be your preference?
+
+```{r}
+data_3 = data_1 %>% 
+  mutate(Q22 = as.factor(Q22),
+         Q22 = addNA(Q22)) %>% 
+  select(age_group,retire_group,gender, Q22) 
+```
+
+#### 22-a: Provide the option of in person and internet access for all events
+
+
+```{r Prop: Q22-a}
+
+# Overall
+data_3 %>%
+  filter(Q22 == 'Provide the options of in-person or internet access for all events')
+
+
+# Gender 
+data_3 %>% 
+  select(gender,Q22) %>% 
+  group_by(gender,Q22) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_22_a = n[Q22 == 'Provide the options of in-person or internet access for all events']/sum(n)) %>% 
+  mutate(prop = percent(Q8_22_a))
+
+
+# Age
+data_3 %>% 
+  select(age_group,Q22) %>% 
+  group_by(age_group,Q22) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_22_a = n[Q22 == 'Provide the options of in-person or internet access for all events']/sum(n),
+            Q8_22_a_count = sum(n[Q22 == 'Provide the options of in-person or internet access for all events'])) %>% 
+  mutate(prop = percent(Q8_22_a))
+
+
+# Year of Retirement
+data_3 %>% 
+  select(retire_group,Q22) %>% 
+  group_by(retire_group,Q22) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_22_a = n[Q22 == 'Provide the options of in-person or internet access for all events']/sum(n),
+            Q8_22_a_count = sum(n[Q22 == 'Provide the options of in-person or internet access for all events'])) %>% 
+  mutate(prop = percent(Q8_22_a))
+```
+
+
+#### 22-b: Provide all events in person but in additions offer internet access for selected events
+
+```{r Prop: Q22-b}
+# Gender 
+data_3 %>% 
+  select(gender,Q22) %>% 
+  group_by(gender,Q22) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(Q8_22_b = n[Q22 == 'Conduct all programs and activities in-person but in addition, offer internet access for selected events']/sum(n)) %>% 
+  mutate(prop = percent(Q8_22_b))
+
+
+# Age
+data_3 %>% 
+  select(age_group,Q22) %>% 
+  group_by(age_group,Q22) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(Q8_22_b = n[Q22 == 'Conduct all programs and activities in-person but in addition, offer internet access for selected events']/sum(n)) %>% 
+  mutate(prop = percent(Q8_22_b))
+
+
+# Year of Retirement
+data_3 %>% 
+  select(retire_group,Q22) %>% 
+  group_by(retire_group,Q22) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(Q8_22_b = n[Q22 == 'Conduct all programs and activities in-person but in addition, offer internet access for selected events']/sum(n)) %>% 
+  mutate(prop = percent(Q8_22_b))
+```
+
+
+### Q16： Since retirement what are some of the professional activities you continue to participate in?Check all that apply. - Selected Choice
+
+
+```{r}
+data_4 = data_1 %>% 
+  mutate(Q16 = as.factor(Q16),
+         Q16 = addNA(Q16)) %>% 
+  select(age_group,retire_group,gender, Q16) 
+```
+
+
+#### Q16:Research    
+
+```{r Prop: research}
+# Overall 
+data_4 %>% 
+  mutate(research = ifelse(str_detect(Q16, 'Research'), TRUE, FALSE)) %>%
+  filter(research == TRUE)
+
+
+# Gender
+data_4 %>% 
+  mutate(research = ifelse(str_detect(Q16, 'Research'), TRUE, FALSE),
+         research = as.factor(research),
+         research = addNA(research)) %>%
+  group_by(gender, research) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(research_prop = n[research == TRUE]/sum(n)) %>% 
+  mutate(research_prop = percent(research_prop))
+
+
+# Age 
+data_4 %>% 
+  mutate(research = ifelse(str_detect(Q16, 'Research'), TRUE, FALSE),
+         research = as.factor(research),
+         research = addNA(research)) %>%
+  group_by(age_group, research) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(research_prop = n[research == TRUE]/sum(n),
+            research_count = sum(n[research == TRUE]))  %>% 
+  mutate(research_prop = percent(research_prop))
+
+
+# Year of Retirement  
+
+data_4 %>% 
+  mutate(research = ifelse(str_detect(Q16, 'Research'), TRUE, FALSE),
+         research = as.factor(research),
+         research = addNA(research)) %>%
+  group_by(retire_group, research) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(research_prop = n[research == TRUE]/sum(n),
+            research_count = sum(n[research == TRUE])) %>% 
+  mutate(research_prop = percent(research_prop))
+
+```
+
+
+#### Q16:Teaching   
+
+```{r Prop: teaching}
+# Overall. 
+data_4 %>% 
+  mutate(teaching = ifelse(str_detect(Q16, 'Teaching'), TRUE, FALSE)) %>%
+  filter(teaching == TRUE)
+
+# Gender 
+data_4 %>% 
+  mutate(teaching = ifelse(str_detect(Q16, 'Teaching'), TRUE, FALSE),
+         teaching = as.factor(teaching),
+         teaching = addNA(teaching)) %>%
+  group_by(gender, teaching) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(teaching_prop = n[teaching == TRUE]/sum(n),
+            teaching_count = sum(n[teaching == TRUE])) %>% 
+  mutate(teaching_prop = percent(teaching_prop))
+
+
+# Age 
+data_4 %>% 
+  mutate(teaching = ifelse(str_detect(Q16, 'Teaching'), TRUE, FALSE),
+         teaching = as.factor(teaching),
+         teaching = addNA(teaching)) %>%
+  group_by(age_group, teaching) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(teaching_prop = n[teaching == TRUE]/sum(n),
+            teaching_count = sum(n[teaching == TRUE])) %>% 
+  mutate(teaching_prop = percent(teaching_prop))
+
+
+# Year of Retirement 
+data_4 %>% 
+  mutate(teaching = ifelse(str_detect(Q16, 'Teaching'), TRUE, FALSE),
+         teaching = as.factor(teaching),
+         teaching = addNA(teaching)) %>%
+  group_by(retire_group, teaching) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(teaching_prop = n[teaching == TRUE]/sum(n),
+            teaching_count = sum(n[teaching == TRUE])) %>% 
+  mutate(teaching_prop = percent(teaching_prop))
+```
+
+### Q25: How do you prefer to receive information from the College? Check all that apply.
+
+```{r}
+data_5 <- data_1 %>% 
+  mutate(Q25 = as.factor(Q25),
+         Q25 = addNA(Q25)) %>% 
+  select(age_group,retire_group,gender, Q25) 
+```
+
+
+```{r}
+data_5 %>% group_by(Q25) %>%
+  tally()
+```
+
+
+
+
+#### 25-a: espondents who selected “email” 
+```{r}
+# Gender 
+data_5 %>% 
+  mutate(email = ifelse(str_detect(Q25, 'Email'), TRUE, FALSE),
+         email = as.factor(email),
+         email = addNA(email)) %>%
+  group_by(gender, email) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(email_prop = n[email == TRUE]/sum(n),
+            email_count = sum(n[email == TRUE])) %>% 
+  mutate(email_prop = percent(email_prop)
+         )  
+
+# Age 
+data_5 %>% 
+  mutate(email = ifelse(str_detect(Q25, 'Email'), TRUE, FALSE),
+         email = as.factor(email),
+         email = addNA(email)) %>%
+  group_by(age_group, email) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(email_prop = n[email == TRUE]/sum(n),
+             email_count = sum(n[email == TRUE])) %>% 
+  mutate(email_prop = percent(email_prop)
+        )  
+
+
+# Year of Retirement  
+data_5 %>% 
+  mutate(email = ifelse(str_detect(Q25, 'Email'), TRUE, FALSE),
+         email = as.factor(email),
+         email = addNA(email)) %>%
+  group_by(retire_group, email) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(email_prop = n[email == TRUE]/sum(n),
+             email_count = sum(n[email == TRUE])) %>% 
+  mutate(email_prop = percent(email_prop))
+
+```
+
+
+
+#### 25-b: espondents who selected “newsletter”
+```{r}
+# Gender 
+data_5 %>% 
+  mutate(newsletter = ifelse(str_detect(Q25, 'Newsletter'), TRUE, FALSE),
+         newsletter = as.factor(newsletter),
+         newsletter = addNA(newsletter)) %>%
+  group_by(gender, newsletter) %>% 
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  summarize(newsletter_prop = n[newsletter == TRUE]/sum(n),
+            newsletter_count = sum(n[newsletter == TRUE])) %>% 
+  mutate(newsletter_prop = percent(newsletter_prop))  
+
+# Age 
+data_5 %>% 
+  mutate(newsletter = ifelse(str_detect(Q25, 'Newsletter'), TRUE, FALSE),
+         newsletter = as.factor(newsletter),
+         newsletter = addNA(newsletter)) %>%
+  group_by(age_group, newsletter) %>% 
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  summarize(newsletter_prop = n[newsletter == TRUE]/sum(n),
+            newsletter_count = sum(n[newsletter == TRUE])) %>% 
+  mutate(newsletter_prop = percent(newsletter_prop))  
+
+
+# Year of Retirement  
+data_5 %>% 
+  mutate(newsletter = ifelse(str_detect(Q25, 'Newsletter'), TRUE, FALSE),
+         newsletter = as.factor(newsletter),
+         newsletter = addNA(newsletter)) %>%
+  group_by(retire_group, newsletter) %>% 
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  summarize(newsletter_prop = n[newsletter == TRUE]/sum(n),
+            newsletter_count = sum(n[newsletter == TRUE])) %>% 
+  mutate(newsletter_prop = percent(newsletter_prop))  
+```
+
+
+### Q30
+
+
+* Q30-1: Knowing about flexible work options offered by UBC to ease into retirement  
+
+* Q30-2: Obtaining UBC Senate-approved emeritus/a status  
+
+* Q30-3: Establishing a post-retirement appointment in my Department  
+
+* Q30-4: Maintaining a relationship with my Department (such as to receive communication of events; named on website)
+
+
+```{r}
+data_5 <-  data_1 %>% 
+  mutate(Q30_1 = as.factor(Q30_1),
+         Q30_2 = as.factor(Q30_2),
+         Q30_3 = as.factor(Q30_3),
+         Q30_4 = as.factor(Q30_4),
+         Q30_1 = addNA(Q30_1),
+         Q30_2 = addNA(Q30_2),
+         Q30_3 = addNA(Q30_3),
+         Q30_4 = addNA(Q30_4)) %>% 
+  select(age_group,retire_group,gender, Q30_1, Q30_2,Q30_3, Q30_4 ) 
+
+data_5$age_group <- factor(data_5$age_group, levels = c('<=59','60-69','70-79', '80-89','>=90','Unknown'))
+```
+
+
+```{r Q30-1}
+# Gender 
+data_5 %>% 
+  group_by(gender, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Age 
+data_5 %>% 
+  group_by(age_group, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Year of Retirement
+
+data_5 %>% 
+  group_by(retire_group, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r, fig.height=5}
+data_5 %>% 
+  group_by(gender, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop)) %>% 
+  filter(gender == 'Female' | gender == 'Male') %>% 
+  mutate(label = paste0(n, ' (', prop, ')')) %>% 
+  ggplot(aes(x = gender, y = prop, fill = Q30_1)) + 
+    geom_bar(position = 'fill', stat = "identity", width = 0.7) + 
+    geom_text(aes(label = label, y= prop), position = 'fill', size = 3.5) + 
+  labs(x = 'Gender',y = 'Count') + 
+  scale_fill_discrete(name = "Rating") 
+
+```
+
+
+```{r}
+data_5 %>%  
+  group_by(gender, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(gender == 'Female' | gender == 'Male') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>%  
+ggplot(aes(x=gender, y=prop, fill = Q30_1)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Gender', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+  
+```
+
+
+
+
+
+```{r fig.width=8}
+data_5 %>% 
+  group_by(age_group, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(age_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=age_group, y=prop, fill = Q30_1)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Age', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+```
+```{r fig.width=8}
+data_5 %>% 
+  group_by(retire_group, Q30_1) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(retire_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=retire_group, y=prop, fill = Q30_1)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Year of Retirment', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+```
+```{r}
+data_5 %>%  
+  group_by(gender, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(gender == 'Female' | gender == 'Male') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>%  
+ggplot(aes(x=gender, y=prop, fill = Q30_2)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Gender', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+```
+
+
+
+
+```{r}
+
+data_5 %>% 
+  group_by(age_group, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(age_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=age_group, y=prop, fill = Q30_2)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Age', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+
+data_5 %>% 
+  group_by(retire_group, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(retire_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=retire_group, y=prop, fill = Q30_2)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Year of Retirment', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+  
+```
+
+
+
+
+
+```{r Q30-2}
+# Gender 
+data_5 %>% 
+  group_by(gender, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Age 
+data_5 %>% 
+  group_by(age_group, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Year of Retirement
+
+data_5 %>% 
+  group_by(retire_group, Q30_2) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r}
+data_5 %>%  
+  group_by(gender, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(gender == 'Female' | gender == 'Male') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>%  
+ggplot(aes(x=gender, y=prop, fill = Q30_3)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Gender', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+
+data_5 %>% 
+  group_by(age_group, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(age_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=age_group, y=prop, fill = Q30_3)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Age', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+
+data_5 %>% 
+  group_by(retire_group, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(retire_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=retire_group, y=prop, fill = Q30_3)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Year of Retirment', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+  
+```
+
+
+```{r Q30-3}
+# Gender 
+data_5 %>% 
+  group_by(gender, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Age 
+data_5 %>% 
+  group_by(age_group, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+
+# Year of Retirement
+
+data_5 %>% 
+  group_by(retire_group, Q30_3) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r}
+data_5 %>%  
+  group_by(gender, Q30_4) %>%
+  tally() %>% 
+  filter(is.na(gender) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(gender) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(gender == 'Female' | gender == 'Male') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>%  
+ggplot(aes(x=gender, y=prop, fill = Q30_4)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Gender', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+
+data_5 %>% 
+  group_by(age_group, Q30_4) %>%
+  tally() %>% 
+  filter(is.na(age_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(age_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(age_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=age_group, y=prop, fill = Q30_4)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Age', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+
+
+data_5 %>% 
+  group_by(retire_group, Q30_4) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  filter(retire_group != 'Unknown') %>% 
+  mutate(Label = paste0(n, ' (', percent(prop), ')')) %>% 
+  ggplot(aes(x=retire_group, y=prop, fill = Q30_4)) +
+  geom_bar(position = "fill", stat = "identity",width=0.9) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = Label), 
+            position = position_stack(vjust = 0.5), size = 3) + 
+  labs(x = 'Year of Retirment', y = 'Percentage') + 
+  scale_fill_discrete(name = "Rating") 
+```
+
+
+
+
+
+
+### Q17: Compared to your earlier years of retirement, has the following changed for you in recent years? 
+* Q17-1: My connection to the university community such as involvement in the Emeritus College, Senate etc.  
+
+* Q17-2: My connection to work colleagues  
+
+* Q17-3: My engagement in professional activities (teaching, research..)    
+
+* Q17-4: My involvement in interdisciplinary projects  
+
+* Q17-5: Pursuing new interests  
+
+* Q17-6: Volunteering in the community  
+
+* Q17-7: Providing care to family and/or friends
+
+```{r}
+data_6 <- raw_data %>% 
+          #select(Q15, Q6_1, Q6_2) %>% 
+          slice(-1) %>% 
+          rename(gender = Q15, YOB = Q6_1, YOR = Q6_2, department_school = Q6_3, faculty = Q6_4) %>%
+          mutate(age = 2021 - as.numeric(YOB),
+                 gender = as.factor(gender),
+                 YOR = as.numeric(YOR),
+                 department_school = as.factor(department_school),
+                 faculty = as.factor(faculty)) 
+
+data_6 = data_6 %>% mutate(retire_group = case_when(YOR >= 2013 ~ 'Early Retirment',
+                                                    YOR <= 2012 & YOR >= 2003 ~ 'Later Retirement',
+                                                    TRUE ~ 'Other'), 
+                           retire_group = as.factor(retire_group),
+                           Q17_1 = addNA(as.factor(Q17_1)),
+                           Q17_2 = addNA(as.factor(Q17_2)),
+                           Q17_3 = addNA(as.factor(Q17_3)),
+                           Q17_4 = addNA(as.factor(Q17_4)),
+                           Q17_5 = addNA(as.factor(Q17_5)),
+                           Q17_6 = addNA(as.factor(Q17_6)),
+                           Q17_7 = addNA(as.factor(Q17_7)),
+                           ) %>% 
+                    select(gender, retire_group,Q17_1,Q17_2,Q17_3,Q17_4,Q17_5,Q17_6,Q17_7)
+```
+```{r Q17_1}
+data_6 %>% 
+    group_by(gender, Q17_1) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_1) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r Q17_2}
+data_6 %>% 
+    group_by(gender, Q17_2) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_2) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r Q17_3}
+data_6 %>% 
+    group_by(gender, Q17_3) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_3) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+
+```{r Q17_4}
+data_6 %>% 
+    group_by(gender, Q17_4) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_4) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+```{r Q17_5}
+data_6 %>% 
+    group_by(gender, Q17_5) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_5) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+
+```{r Q17_6}
+data_6 %>% 
+    group_by(gender, Q17_6) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_6) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+
+
+
+
+```{r Q17_7}
+data_6 %>% 
+    group_by(gender, Q17_7) %>%
+    tally() %>% 
+    filter(is.na(gender) == FALSE) %>% 
+    ungroup() %>% 
+    group_by(gender) %>% 
+    mutate(prop = n/sum(n),
+           prop = percent(prop))
+  
+data_6 %>% 
+  group_by(.data$retire_group, Q17_7) %>%
+  tally() %>% 
+  filter(is.na(retire_group) == FALSE) %>% 
+  ungroup() %>% 
+  group_by(retire_group) %>% 
+  mutate(prop = n/sum(n),
+         prop = percent(prop))
+
+```
+
+### Q24: Any final comments?
+```{r}
+data_7 <- raw_data %>% 
+          #select(Q15, Q6_1, Q6_2) %>% 
+          slice(-1) %>% 
+          rename(gender = Q15, YOB = Q6_1, YOR = Q6_2, department_school = Q6_3, faculty = Q6_4) %>%
+          mutate(age = 2021 - as.numeric(YOB),
+                 gender = as.factor(gender))
+
+
+data_7 = data_7 %>% mutate(age_group = case_when(YOB >= 1962 ~ '<=59',
+                                        YOB <= 1961 & YOB >= 1952 ~ '60-69',
+                                        YOB <= 1951 & YOB >= 1942 ~ '70-79',
+                                        YOB <= 1941 & YOB >= 1932 ~ '80-89',
+                                        YOB <= 1931 ~ '>=90',
+                                        TRUE ~ "Unknown"),
+                           age_group = as.factor(age_group))
+
+# Group by gender  
+data_7 %>% select(gender, Q24) %>%
+  filter(is.na(Q24) == FALSE) %>%
+  group_by(gender) %>% tally()
+
+
+# Group by age  
+data_7 %>% select(age_group, Q24) %>%
+  filter(is.na(Q24) == FALSE) %>%
+  group_by(age_group)
+
+```
+
+```{r}
+data_7 %>% 
+  select(gender, Q24) %>% 
+  drop_na(Q24) %>% 
+  unnest_tokens(word,Q24) %>%
+   anti_join(stop_words) %>% 
+  filter(!(word %in% c("thou", "thy", "haue", "thee", 
+                      "thine", "enter", "exeunt", "exit"))) %>% 
+  # Count all the words in each play
+  count(gender, word, sort = TRUE) %>% 
+  # Keep top 15 in each play
+  group_by(gender) %>% 
+  top_n(15) %>% 
+  ungroup() %>% 
+  # Make the words an ordered factor so they plot in order
+  mutate(word = fct_inorder(word))
+```
+
+
+
+
+
+### Q32: most helpful resource
+```{r}
+data_7 %>% 
+  filter(is.na(Q32) == FALSE)  %>% 
+  select(Q32)
+
+
+# Group by gender  
+data_7 %>% select(gender, Q32) %>%
+  filter(is.na(Q24) == FALSE) %>%
+  group_by(gender)
+
+
+# Group by age  
+data_7 %>% select(age_group, Q32) %>%
+  filter(is.na(Q32) == FALSE) %>%
+  group_by(age_group)
+
+```
+
+### Q33: how else could we support
+
+```{r}
+data_7 %>% 
+  filter(is.na(Q33) == FALSE)  %>% 
+  select(Q33)
+
+
+# Group by gender  
+data_7 %>% select(gender, Q33) %>%
+  filter(is.na(Q24) == FALSE) %>%
+  group_by(gender)
+
+
+# Group by age  
+data_7 %>% select(age_group, Q33) %>%
+  filter(is.na(Q33) == FALSE) %>%
+  group_by(age_group)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
