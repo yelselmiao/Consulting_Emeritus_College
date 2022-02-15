@@ -1,6 +1,6 @@
-# Consulting_Emeritus_College
+# _STCS Consulting_ 
 
-## TOPIC: Survey  UBC Emeritus College
+## TOPIC: Feedback Analysis for Survices Provided by UBC Emeritus College
 <img src="https://github.com/yelselmiao/Linguistic_Consulting/blob/master/Figures/BUVIBqkI_400x400.png" width="100" height="100" align="left">
 
 **Affiliation**: [Applied Statistics and Data Science Group](https://asda.stat.ubc.ca) and [STCS](https://www.stat.ubc.ca/~stcs/) 
