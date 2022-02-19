@@ -6,7 +6,6 @@
 **Affiliation**: [Applied Statistics and Data Science Group](https://asda.stat.ubc.ca) and [STCS](https://www.stat.ubc.ca/~stcs/) 
 
 **Consultant**: Shuyi Tan  
-**Client**: Dr. Anne Kristine Junker  
 **Date**: Jun - Jul 2021  
 
 ## Description
